@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ms">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glasses Shape Matcher</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<!-- MediaPipe / Vision Library -->
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen p-6 flex flex-col items-center">
+
+<h1 class="text-3xl font-bold text-sky-400 mb-4">Eyewear Shape Advisor</h1>
+<p class="text-slate-400 mb-6 text-center">Kesan bentuk muka anda & cuba cermin mata yang sesuai!</p>
+
+<div class="relative w-full max-w-md bg-slate-800 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
+<video id="webcam" autoplay playsinline class="w-full h-auto transform -scale-x-100"></video>
+<canvas id="output_canvas" class="absolute top-0 left-0 w-full h-full transform -scale-x-100"></canvas>
+</div>
+
+<div id="result-box" class="mt-6 p-4 bg-slate-800 rounded-lg w-full max-w-md border border-slate-700 text-center">
+<h2 class="text-lg font-semibold text-slate-300">Bentuk Muka Dikesan:</h2>
+<p id="face-shape" class="text-2xl font-bold text-emerald-400 mt-1">Menganalisis...</p>
+
+<div id="recommendation" class="mt-4 text-sm text-slate-300 text-left bg-slate-900/50 p-3 rounded border border-slate-700/50">
+<span class="font-bold text-sky-400">Bingkai Disyorkan:</span>
+<ul id="glasses-list" class="list-disc list-inside mt-1 text-slate-400">
+<li>Tunjukkan muka anda pada kamera untuk cadangan.</li>
+</ul>
+</div>
+</div>
+
+<script>
+// Logik padanan bentuk muka & cermin mata
+const frameRules = {
+Round: ["Segi Empat (Square)", "Wayfarer", "Rectangular"],
+Square: ["Bulat (Round)", "Oval", "Cat-Eye"],
+Oval: ["Hampir Semua Jenis (Aviator, Wayfarer, Round, Square)"],
+Heart: ["Bottom-heavy", "Round", "Oval", "Cat-Eye"],
+Diamond: ["Oval", "Rimless", "Cat-Eye"]
+};
+
+// Logik pengiraan nisbah mercu muka (Landmarks ratio)
+function determineFaceShape(landmarks) {
+// Boleh dikira menggunakan jawline width vs face height
+// Contoh pseudocode nisbah:
+// const faceLength = distance(landmarks.topHead, landmarks.chin);
+// const cheekboneWidth = distance(landmarks.leftCheek, landmarks.rightCheek);
+return "Oval"; // Contoh output
+}
+</script>
+</body>
+</html>
