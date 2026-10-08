@@ -1,55 +1,806 @@
 <!DOCTYPE html>
-<html lang="ms">
+<html lang="ms" class="dark">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Glasses Shape Matcher</title>
-<script src="https://cdn.tailwindcss.com"></script>
-<!-- MediaPipe / Vision Library -->
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
-<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/face-landmarks-detection"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AuraSpecs - AI Virtual Glasses Try-On & Face Shape Advisor</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              400: '#38bdf8',
+              500: '#0ea5e9',
+              600: '#0284c7',
+              900: '#0c4a6e',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- MediaPipe Face Mesh & Camera Utils via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+  <style>
+    /* Custom Scrollbar & Canvas Fit */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.6);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(56, 189, 248, 0.25);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(56, 189, 248, 0.5);
+    }
+    .glass-panel {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+  </style>
 </head>
-<body class="bg-slate-900 text-white min-h-screen p-6 flex flex-col items-center">
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans selection:bg-brand-500 selection:text-white">
 
-<h1 class="text-3xl font-bold text-sky-400 mb-4">Eyewear Shape Advisor</h1>
-<p class="text-slate-400 mb-6 text-center">Kesan bentuk muka anda & cuba cermin mata yang sesuai!</p>
+  <!-- Top Navigation Header -->
+  <header class="border-b border-slate-800/80 glass-panel sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-brand-500/20">
+          <i class="fa-solid font-bold text-white text-xl">
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
+              <path d="M21,6H3A2,2 0 0,0 1,8V16A2,2 0 0,0 3,18H8A2,2 0 0,0 10,16V15H14V16A2,2 0 0,0 16,18H21A2,2 0 0,0 23,16V8A2,2 0 0,0 21,6M7.5,15A3.5,3.5 0 0,1 4,11.5A3.5,3.5 0 0,1 7.5,8A3.5,3.5 0 0,1 11,11.5A3.5,3.5 0 0,1 7.5,15M16.5,15A3.5,3.5 0 0,1 13,11.5A3.5,3.5 0 0,1 16.5,8A3.5,3.5 0 0,1 20,11.5A3.5,3.5 0 0,1 16.5,15Z"/>
+            </svg>
+          </i>
+        </div>
+        <div>
+          <h1 class="text-lg font-bold bg-gradient-to-r from-white via-slate-200 to-brand-400 bg-clip-text text-transparent">AuraSpecs</h1>
+          <p class="text-xs text-slate-400">AI Real-time Glasses Fit & Shape Matching</p>
+        </div>
+      </div>
 
-<div class="relative w-full max-w-md bg-slate-800 rounded-xl overflow-hidden shadow-2xl border border-slate-700">
-<video id="webcam" autoplay playsinline class="w-full h-auto transform -scale-x-100"></video>
-<canvas id="output_canvas" class="absolute top-0 left-0 w-full h-full transform -scale-x-100"></canvas>
-</div>
+      <div class="flex items-center space-x-3">
+        <!-- Status Indicator -->
+        <span id="ai-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+          Menyediakan AI...
+        </span>
+      </div>
+    </div>
+  </header>
 
-<div id="result-box" class="mt-6 p-4 bg-slate-800 rounded-lg w-full max-w-md border border-slate-700 text-center">
-<h2 class="text-lg font-semibold text-slate-300">Bentuk Muka Dikesan:</h2>
-<p id="face-shape" class="text-2xl font-bold text-emerald-400 mt-1">Menganalisis...</p>
+  <!-- Main Grid Container -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
 
-<div id="recommendation" class="mt-4 text-sm text-slate-300 text-left bg-slate-900/50 p-3 rounded border border-slate-700/50">
-<span class="font-bold text-sky-400">Bingkai Disyorkan:</span>
-<ul id="glasses-list" class="list-disc list-inside mt-1 text-slate-400">
-<li>Tunjukkan muka anda pada kamera untuk cadangan.</li>
-</ul>
-</div>
-</div>
+    <!-- LEFT COLUMN: Camera/Viewport & Realtime Canvas (7 Cols) -->
+    <section class="lg:col-span-7 flex flex-col space-y-4">
+      <div class="relative w-full aspect-[4/3] bg-slate-900 rounded-2xl overflow-hidden glass-panel border border-slate-800 shadow-2xl flex items-center justify-center group">
+        
+        <!-- Video Feed (Hidden visually, rendered to canvas) -->
+        <video id="webcam" class="hidden" playsinline muted></video>
+        
+        <!-- Interactive Canvas Viewport -->
+        <canvas id="output_canvas" class="w-full h-full object-cover transform -scale-x-100"></canvas>
 
-<script>
-// Logik padanan bentuk muka & cermin mata
-const frameRules = {
-Round: ["Segi Empat (Square)", "Wayfarer", "Rectangular"],
-Square: ["Bulat (Round)", "Oval", "Cat-Eye"],
-Oval: ["Hampir Semua Jenis (Aviator, Wayfarer, Round, Square)"],
-Heart: ["Bottom-heavy", "Round", "Oval", "Cat-Eye"],
-Diamond: ["Oval", "Rimless", "Cat-Eye"]
-};
+        <!-- Dynamic Overlay Message / Loader -->
+        <div id="viewport-loader" class="absolute inset-0 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20 transition-opacity duration-300">
+          <div class="w-12 h-12 border-4 border-brand-500/30 border-t-brand-500 rounded-full animate-spin mb-4"></div>
+          <p class="text-slate-200 font-medium text-sm mb-1" id="loader-title">Memuatkan Model Pengesanan Muka...</p>
+          <p class="text-slate-400 text-xs max-w-xs" id="loader-desc">Sila benarkan akses kamera untuk percubaan cermin mata secara langsung.</p>
+        </div>
 
-// Logik pengiraan nisbah mercu muka (Landmarks ratio)
-function determineFaceShape(landmarks) {
-// Boleh dikira menggunakan jawline width vs face height
-// Contoh pseudocode nisbah:
-// const faceLength = distance(landmarks.topHead, landmarks.chin);
-// const cheekboneWidth = distance(landmarks.leftCheek, landmarks.rightCheek);
-return "Oval"; // Contoh output
-}
-</script>
+        <!-- Canvas Controls Bar (Floating Top Left/Right) -->
+        <div class="absolute top-4 left-4 right-4 flex justify-between items-center z-10 pointer-events-none">
+          <div class="flex items-center gap-2 pointer-events-auto">
+            <button id="btn-mode-webcam" onclick="switchMode('webcam')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-500 text-white shadow-lg shadow-brand-500/30 flex items-center gap-2 transition hover:bg-brand-400">
+              <i class="fa-solid fa-video"></i> Kamera Live
+            </button>
+            <button id="btn-mode-upload" onclick="switchMode('upload')" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 backdrop-blur flex items-center gap-2 transition">
+              <i class="fa-solid fa-upload"></i> Muat Naik Gambar
+            </button>
+          </div>
+
+          <div class="pointer-events-auto flex items-center gap-2">
+            <button id="btn-toggle-landmarks" onclick="toggleLandmarks()" title="Tunjukkan Titik Landmark Muka" class="w-8 h-8 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center transition">
+              <i class="fa-solid fa-circle-nodes"></i>
+            </button>
+            <button id="btn-snap" onclick="takeSnapshot()" title="Ambil Gambar" class="w-8 h-8 rounded-lg bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-300 flex items-center justify-center transition">
+              <i class="fa-solid fa-camera"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Hidden File Input for Upload Mode -->
+        <input type="file" id="image-upload-input" accept="image/*" class="hidden" onchange="handleImageUpload(event)">
+
+        <!-- Upload Drag & Drop Trigger Box (Shown in upload mode) -->
+        <div id="upload-overlay" class="hidden absolute inset-0 bg-slate-950/90 border-2 border-dashed border-slate-700 hover:border-brand-500 rounded-2xl flex flex-col items-center justify-center p-6 cursor-pointer transition z-10" onclick="document.getElementById('image-upload-input').click()">
+          <div class="w-16 h-16 rounded-2xl bg-brand-500/10 text-brand-400 flex items-center justify-center mb-3">
+            <i class="fa-solid fa-cloud-arrow-up text-2xl"></i>
+          </div>
+          <p class="text-sm font-semibold text-slate-200 mb-1">Klik atau seret gambar anda ke sini</p>
+          <p class="text-xs text-slate-400">Format disokong: PNG, JPG, JPEG, WEBP</p>
+          <button class="mt-4 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-medium rounded-xl transition">Pilih Fail</button>
+        </div>
+
+        <!-- Floating Mode Indicator -->
+        <div class="absolute bottom-4 left-4 z-10 bg-slate-900/80 backdrop-blur px-3 py-1.2 rounded-lg border border-slate-800 text-[11px] text-slate-400 flex items-center gap-2">
+          <span id="active-mode-label"><i class="fa-solid fa-circle text-[8px] text-emerald-400"></i> Live Webcam Mode</span>
+        </div>
+      </div>
+
+      <!-- Quick Tips Bar -->
+      <div class="p-3 rounded-xl glass-panel text-xs text-slate-400 flex items-center gap-3">
+        <i class="fa-solid fa-lightbulb text-amber-400 text-sm"></i>
+        <span><strong>Petua:</strong> Pastikan pencahayaan cukup dan Muka menghadap terus ke kamera untuk pengesanan yang tepat.</span>
+      </div>
+    </section>
+
+    <!-- RIGHT COLUMN: Control Panel, Analytics & Frame Picker (5 Cols) -->
+    <section class="lg:col-span-5 flex flex-col space-y-5">
+
+      <!-- 1. Detected Face Analytics Card -->
+      <div class="glass-panel p-5 rounded-2xl border border-slate-800 shadow-xl relative overflow-hidden">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-face-smile text-brand-400"></i>
+            <h2 class="text-sm font-bold tracking-wide uppercase text-slate-300">Analisis Muka AI</h2>
+          </div>
+          <span id="confidence-tag" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">Tiada Pengesanan</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-4">
+          <div class="bg-slate-900/80 border border-slate-800 p-3 rounded-xl">
+            <span class="text-[11px] text-slate-400 block mb-0.5">Bentuk Muka Dikesan</span>
+            <span id="detected-shape-text" class="text-lg font-extrabold text-brand-400">Menunggu...</span>
+          </div>
+          <div class="bg-slate-900/80 border border-slate-800 p-3 rounded-xl">
+            <span class="text-[11px] text-slate-400 block mb-0.5">Nisbah Panjang/Lebar</span>
+            <span id="face-ratio-text" class="text-lg font-bold text-slate-200">0.00</span>
+          </div>
+        </div>
+
+        <p id="shape-description" class="text-xs text-slate-400 leading-relaxed bg-slate-950/40 p-3 rounded-xl border border-slate-800/50">
+          Sistem akan menganalisis kontur muka anda untuk menentukan bentuk geometri (Bulat, Petak, Bujur, Hati, atau Berlian).
+        </p>
+      </div>
+
+      <!-- 2. Interactive Glasses Selection Gallery -->
+      <div class="glass-panel p-5 rounded-2xl border border-slate-800 shadow-xl flex flex-col flex-1">
+        <div class="flex items-center justify-between mb-4">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-glasses text-brand-400"></i>
+            <h2 class="text-sm font-bold tracking-wide uppercase text-slate-300">Koleksi Cermin Mata</h2>
+          </div>
+          <span class="text-[11px] text-slate-400"><span id="recommended-count">0</span> Sesuai</span>
+        </div>
+
+        <!-- Frame Selector Cards Grid -->
+        <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-56 overflow-y-auto pr-1 mb-4" id="glasses-grid">
+          <!-- Populated dynamically via JS -->
+        </div>
+
+        <!-- Frame Customization Sliders -->
+        <div class="space-y-3 pt-3 border-t border-slate-800/80">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-semibold text-slate-300 flex items-center gap-2">
+              <i class="fa-solid fa-sliders text-brand-400"></i> Pelarasan Bingkai
+            </span>
+            <button onclick="resetGlassesAdjustments()" class="text-[11px] text-brand-400 hover:text-brand-300 transition">Reset</button>
+          </div>
+
+          <!-- Color Picker -->
+          <div class="flex items-center justify-between gap-2 text-xs">
+            <span class="text-slate-400">Warna Bingkai:</span>
+            <div class="flex items-center gap-2" id="color-picker-group">
+              <button onclick="setFrameColor('#1e293b')" class="w-5 h-5 rounded-full bg-slate-800 border-2 border-white/80 transition hover:scale-110"></button>
+              <button onclick="setFrameColor('#d97706')" class="w-5 h-5 rounded-full bg-amber-600 border border-white/20 transition hover:scale-110"></button>
+              <button onclick="setFrameColor('#dc2626')" class="w-5 h-5 rounded-full bg-red-600 border border-white/20 transition hover:scale-110"></button>
+              <button onclick="setFrameColor('#0284c7')" class="w-5 h-5 rounded-full bg-sky-600 border border-white/20 transition hover:scale-110"></button>
+              <button onclick="setFrameColor('#e2e8f0')" class="w-5 h-5 rounded-full bg-slate-200 border border-white/20 transition hover:scale-110"></button>
+            </div>
+          </div>
+
+          <!-- Size Scale Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px] text-slate-400">
+              <span>Saiz Skala</span>
+              <span id="val-scale">1.0x</span>
+            </div>
+            <input type="range" id="slider-scale" min="0.7" max="1.4" step="0.02" value="1.0" oninput="updateGlassesParam()" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500">
+          </div>
+
+          <!-- Vertical Offset Slider -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-[11px] text-slate-400">
+              <span>Kedudukan Tinggi (Y Offset)</span>
+              <span id="val-offset-y">0px</span>
+            </div>
+            <input type="range" id="slider-offset-y" min="-30" max="30" step="1" value="0" oninput="updateGlassesParam()" class="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-brand-500">
+          </div>
+        </div>
+
+      </div>
+
+    </section>
+  </main>
+
+  <!-- Snapshot Modal -->
+  <div id="snapshot-modal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden items-center justify-center z-50 p-4">
+    <div class="glass-panel p-6 rounded-2xl max-w-lg w-full border border-slate-800 flex flex-col items-center">
+      <h3 class="text-base font-bold text-slate-200 mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-camera text-brand-400"></i> Tangkapan Gambar
+      </h3>
+      <img id="snapshot-img" class="w-full h-auto rounded-xl border border-slate-800 mb-4 shadow-xl" src="" alt="Snapshot">
+      <div class="flex items-center gap-3 w-full">
+        <a id="download-snap-btn" download="auraspecs-tryon.png" class="flex-1 text-center py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-xs font-semibold transition">
+          <i class="fa-solid fa-download mr-1"></i> Muat Turun Gambar
+        </a>
+        <button onclick="closeSnapshotModal()" class="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition">
+          Tutup
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. GLOBAL STATE & CONSTANTS
+       ========================================================================== */
+    let currentMode = 'webcam'; // 'webcam' or 'upload'
+    let isLandmarksVisible = false;
+    let selectedGlassesId = 'wayfarer';
+    let frameColor = '#1e293b'; // Default dark slate
+    let scaleModifier = 1.0;
+    let offsetYModifier = 0;
+    
+    let camera = null;
+    let faceMesh = null;
+    let lastResults = null;
+    let uploadedImageElement = null;
+
+    // Face shape rules dictionary
+    const FACE_SHAPE_RULES = {
+      Oval: {
+        desc: "Bentuk muka bujur mempunyai proporsi seimbang dengan rahang lembut. Sesuai dengan hampir semua jenis cermin mata!",
+        recommended: ['wayfarer', 'aviator', 'round', 'browline', 'cat-eye', 'oval']
+      },
+      Round: {
+        desc: "Muka bulat mempunyai lebar dan panjang yang seimbang. Cermin mata bersegi membantu memberikan sudut & ilusi lebih tirus.",
+        recommended: ['wayfarer', 'browline', 'cat-eye']
+      },
+      Square: {
+        desc: "Muka petak mempunyai garisan rahang yang tegap dan dahi lebar. Cermin mata melengkung/bulat melembutkan garisan muka.",
+        recommended: ['round', 'aviator', 'oval', 'cat-eye']
+      },
+      Heart: {
+        desc: "Muka bentuk hati mempunyai dahi lebih lebar dengan dagu tirus. Cermin mata jenis 'Cat-Eye' atau bingkai bawah tebal adalah ideal.",
+        recommended: ['cat-eye', 'oval', 'round', 'aviator']
+      },
+      Diamond: {
+        desc: "Muka berlian mempunyai tulang pipi tinggi & menonjol dengan dahi serta dagu yang tirus. Sesuai dengan cermin mata Browline & Oval.",
+        recommended: ['browline', 'oval', 'cat-eye']
+      }
+    };
+
+    // Glasses Specs Catalog
+    const GLASSES_CATALOG = [
+      { id: 'wayfarer', name: 'Square / Wayfarer', type: 'Wayfarer', shapeMatch: ['Round', 'Oval'] },
+      { id: 'round', name: 'Classic Round', type: 'Round', shapeMatch: ['Square', 'Heart', 'Oval'] },
+      { id: 'aviator', name: 'Retro Aviator', type: 'Aviator', shapeMatch: ['Square', 'Oval', 'Heart'] },
+      { id: 'cateye', name: 'Modern Cat-Eye', type: 'Cat-Eye', shapeMatch: ['Round', 'Heart', 'Diamond', 'Square'] },
+      { id: 'oval', name: 'Minimalist Oval', type: 'Oval', shapeMatch: ['Square', 'Diamond', 'Heart'] },
+      { id: 'browline', name: 'Classic Browline', type: 'Browline', shapeMatch: ['Round', 'Diamond', 'Oval'] }
+    ];
+
+    let currentDetectedShape = 'Oval';
+
+    /* ==========================================================================
+       2. DOM ELEMENTS & INITIALIZATION
+       ========================================================================== */
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('output_canvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const viewportLoader = document.getElementById('viewport-loader');
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderGlassesGallery();
+      initFaceMesh();
+    });
+
+    /* ==========================================================================
+       3. MEDIAPIPE FACE MESH INITIALIZATION
+       ========================================================================== */
+    function initFaceMesh() {
+      faceMesh = new FaceMesh({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+      });
+
+      faceMesh.setOptions({
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+      });
+
+      faceMesh.onResults(onFaceMeshResults);
+
+      // Initialize Webcam Camera Stream
+      camera = new Camera(videoElement, {
+        onFrame: async () => {
+          if (currentMode === 'webcam') {
+            await faceMesh.send({ image: videoElement });
+          }
+        },
+        width: 1280,
+        height: 960
+      });
+
+      camera.start().then(() => {
+        hideLoader();
+        updateStatusBadge(true, "AI Aktif & Mengesan");
+      }).catch(err => {
+        console.warn("Webcam access denied or unavailable. Fallback mode ready.", err);
+        showFallbackCameraNotice();
+      });
+    }
+
+    function hideLoader() {
+      viewportLoader.classList.add('opacity-0', 'pointer-events-none');
+    }
+
+    function showFallbackCameraNotice() {
+      document.getElementById('loader-title').innerText = "Kamera Tidak Dijumpai";
+      document.getElementById('loader-desc').innerText = "Sila muat naik gambar swafoto anda untuk menggunakan penyesuai cermin mata AI.";
+      document.getElementById('ai-status-badge').className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20";
+      document.getElementById('ai-status-badge').innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> Mod Muat Naik Gambar`;
+    }
+
+    function updateStatusBadge(active, text) {
+      const badge = document.getElementById('ai-status-badge');
+      if (active) {
+        badge.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+        badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> ${text}`;
+      }
+    }
+
+    /* ==========================================================================
+       4. RESULTS PROCESSING & DRAWING LOOP
+       ========================================================================== */
+    function onFaceMeshResults(results) {
+      lastResults = results;
+
+      // Adjust Canvas Dimensions to Source
+      const sourceWidth = currentMode === 'webcam' ? videoElement.videoWidth : (uploadedImageElement ? uploadedImageElement.width : 640);
+      const sourceHeight = currentMode === 'webcam' ? videoElement.videoHeight : (uploadedImageElement ? uploadedImageElement.height : 480);
+
+      if (sourceWidth && sourceHeight) {
+        canvasElement.width = sourceWidth;
+        canvasElement.height = sourceHeight;
+      }
+
+      // Clear Canvas
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      // Draw background frame (Video or Uploaded Image)
+      if (currentMode === 'webcam') {
+        canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+      } else if (currentMode === 'upload' && uploadedImageElement) {
+        canvasCtx.drawImage(uploadedImageElement, 0, 0, canvasElement.width, canvasElement.height);
+      }
+
+      // Check if face detected
+      if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+        const landmarks = results.multiFaceLandmarks[0];
+
+        // 1. Analyze Face Shape
+        analyzeFaceShape(landmarks, canvasElement.width, canvasElement.height);
+
+        // 2. Draw Optional Landmark Mesh Points
+        if (isLandmarksVisible) {
+          drawLandmarksMesh(landmarks);
+        }
+
+        // 3. Render Vector Glasses Overlay
+        renderGlassesOverlay(landmarks);
+
+        document.getElementById('confidence-tag').innerText = "Terkesan";
+        document.getElementById('confidence-tag').className = "text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+      } else {
+        document.getElementById('confidence-tag').innerText = "Tiada Muka Dikesan";
+        document.getElementById('confidence-tag').className = "text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700";
+      }
+
+      canvasCtx.restore();
+    }
+
+    /* ==========================================================================
+       5. FACE SHAPE ANALYSIS LOGIC (GEOMETRIC RATIOS)
+       ========================================================================== */
+    function analyzeFaceShape(landmarks, width, height) {
+      // Key Landmarks Index References:
+      // Forehead Top: 10, Chin Bottom: 152
+      // Left Jaw: 234, Right Jaw: 454
+      // Left Cheek: 127, Right Cheek: 356
+      // Left Temple: 21, Right Temple: 251
+
+      const p10 = getPoint(landmarks[10], width, height);
+      const p152 = getPoint(landmarks[152], width, height);
+      const p234 = getPoint(landmarks[234], width, height);
+      const p454 = getPoint(landmarks[454], width, height);
+      const p127 = getPoint(landmarks[127], width, height);
+      const p356 = getPoint(landmarks[356], width, height);
+
+      const faceLength = distance(p10, p152);
+      const jawWidth = distance(p234, p454);
+      const cheekboneWidth = distance(p127, p356);
+
+      if (jawWidth === 0) return;
+
+      const lengthToJawRatio = faceLength / jawWidth;
+      const cheekToJawRatio = cheekboneWidth / jawWidth;
+
+      document.getElementById('face-ratio-text').innerText = lengthToJawRatio.toFixed(2);
+
+      let shape = 'Oval';
+
+      // Shape Classification Matrix
+      if (lengthToJawRatio < 1.28) {
+        shape = cheekToJawRatio > 1.15 ? 'Round' : 'Square';
+      } else if (lengthToJawRatio > 1.45) {
+        shape = cheekToJawRatio > 1.18 ? 'Heart' : 'Diamond';
+      } else {
+        shape = cheekToJawRatio > 1.12 ? 'Oval' : 'Square';
+      }
+
+      if (shape !== currentDetectedShape) {
+        currentDetectedShape = shape;
+        updateShapeUI(shape);
+      }
+    }
+
+    function getPoint(landmark, width, height) {
+      return { x: landmark.x * width, y: landmark.y * height };
+    }
+
+    function distance(p1, p2) {
+      return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2));
+    }
+
+    function updateShapeUI(shape) {
+      const shapeTextEl = document.getElementById('detected-shape-text');
+      const shapeDescEl = document.getElementById('shape-description');
+
+      shapeTextEl.innerText = shape;
+      if (FACE_SHAPE_RULES[shape]) {
+        shapeDescEl.innerText = FACE_SHAPE_RULES[shape].desc;
+      }
+
+      renderGlassesGallery(); // Re-render gallery with updated recommendation badges
+    }
+
+    /* ==========================================================================
+       6. DYNAMIC VECTOR GLASSES RENDERING ENGINE
+       ========================================================================== */
+    function renderGlassesOverlay(landmarks) {
+      const w = canvasElement.width;
+      const h = canvasElement.height;
+
+      // Key Landmarks for Eyewear Positioning:
+      // Left Eye Outer Corner: 33, Right Eye Outer Corner: 263
+      // Left Pupil Center: 468, Right Pupil Center: 473 (or eye centers 159 & 386)
+      // Nose Bridge Center: 168
+      const leftEye = getPoint(landmarks[33], w, h);
+      const rightEye = getPoint(landmarks[263], w, h);
+      const noseBridge = getPoint(landmarks[168], w, h);
+
+      // Distance between pupils/eyes determines scale
+      const eyeDist = distance(leftEye, rightEye);
+      
+      // Calculate rotation angle relative to horizontal
+      const angle = Math.atan2(rightEye.y - leftEye.y, rightEye.x - leftEye.x);
+
+      // Center point for glasses between eyes
+      const centerX = (leftEye.x + rightEye.x) / 2;
+      const centerY = ((leftEye.y + rightEye.y) / 2) + offsetYModifier;
+
+      canvasCtx.save();
+      
+      // Translate to glasses center & rotate
+      canvasCtx.translate(centerX, centerY);
+      canvasCtx.rotate(angle);
+
+      // Dynamic Frame Width based on Eye Distance (standard multiplier ~2.2x)
+      const frameWidth = eyeDist * 2.25 * scaleModifier;
+      const frameHeight = frameWidth * 0.45; // Default aspect ratio
+
+      // Draw Selected Glasses Shape
+      drawGlassesShape(selectedGlassesId, frameWidth, frameHeight, frameColor);
+
+      canvasCtx.restore();
+    }
+
+    /* SVG/Canvas Vector Path Drawings for Frame Styles */
+    function drawGlassesShape(type, width, height, color) {
+      canvasCtx.fillStyle = color;
+      canvasCtx.strokeStyle = color;
+      canvasCtx.lineWidth = Math.max(3, width * 0.035);
+      canvasCtx.lineJoin = 'round';
+      canvasCtx.lineCap = 'round';
+
+      const hw = width / 2;
+      const hh = height / 2;
+      const bridgeWidth = width * 0.18;
+      const lensWidth = (width - bridgeWidth) / 2;
+
+      // Lens Glass Tint Gradient
+      const glassGradient = canvasCtx.createLinearGradient(-hw, -hh, hw, hh);
+      glassGradient.addColorStop(0, 'rgba(224, 242, 254, 0.25)');
+      glassGradient.addColorStop(0.5, 'rgba(186, 230, 253, 0.15)');
+      glassGradient.addColorStop(1, 'rgba(56, 189, 248, 0.3)');
+
+      if (type === 'wayfarer') {
+        // --- Square / Wayfarer ---
+        drawRimsAndLenses((x) => {
+          canvasCtx.beginPath();
+          canvasCtx.roundRect(x - lensWidth/2, -hh, lensWidth, height * 0.85, [8, 8, 16, 16]);
+        }, hw, bridgeWidth, lensWidth, glassGradient);
+
+      } else if (type === 'round') {
+        // --- Classic Round ---
+        drawRimsAndLenses((x) => {
+          canvasCtx.beginPath();
+          canvasCtx.arc(x, 0, lensWidth / 2, 0, Math.PI * 2);
+        }, hw, bridgeWidth, lensWidth, glassGradient);
+
+      } else if (type === 'aviator') {
+        // --- Aviator ---
+        drawRimsAndLenses((x) => {
+          canvasCtx.beginPath();
+          canvasCtx.moveTo(x - lensWidth/2, -hh * 0.6);
+          canvasCtx.lineTo(x + lensWidth/2, -hh * 0.6);
+          canvasCtx.quadraticCurveTo(x + lensWidth/2, hh * 0.9, x, hh * 0.9);
+          canvasCtx.quadraticCurveTo(x - lensWidth/2, hh * 0.9, x - lensWidth/2, -hh * 0.6);
+          canvasCtx.closePath();
+        }, hw, bridgeWidth, lensWidth, glassGradient);
+
+        // Top Brow Bar for Aviator
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(-bridgeWidth * 1.2, -hh * 0.8);
+        canvasCtx.lineTo(bridgeWidth * 1.2, -hh * 0.8);
+        canvasCtx.stroke();
+
+      } else if (type === 'cateye') {
+        // --- Cat-Eye ---
+        drawRimsAndLenses((x, isRight) => {
+          const dir = isRight ? 1 : -1;
+          canvasCtx.beginPath();
+          canvasCtx.moveTo(x - dir * (lensWidth/2), -hh * 0.2);
+          canvasCtx.quadraticCurveTo(x - dir * (lensWidth/4), -hh * 0.9, x + dir * (lensWidth/2 + 8), -hh * 1.1);
+          canvasCtx.quadraticCurveTo(x + dir * (lensWidth/2), hh * 0.7, x, hh * 0.7);
+          canvasCtx.quadraticCurveTo(x - dir * (lensWidth/2), hh * 0.5, x - dir * (lensWidth/2), -hh * 0.2);
+          canvasCtx.closePath();
+        }, hw, bridgeWidth, lensWidth, glassGradient);
+
+      } else if (type === 'oval') {
+        // --- Minimalist Oval ---
+        drawRimsAndLenses((x) => {
+          canvasCtx.beginPath();
+          canvasCtx.ellipse(x, 0, lensWidth / 2, height * 0.38, 0, 0, Math.PI * 2);
+        }, hw, bridgeWidth, lensWidth, glassGradient);
+
+      } else if (type === 'browline') {
+        // --- Browline / Clubmaster ---
+        drawRimsAndLenses((x) => {
+          canvasCtx.beginPath();
+          canvasCtx.roundRect(x - lensWidth/2, -hh * 0.5, lensWidth, height * 0.75, [4, 4, 14, 14]);
+        }, hw, bridgeWidth, lensWidth, glassGradient);
+
+        // Heavy Top Brow Bar
+        canvasCtx.lineWidth = Math.max(6, width * 0.06);
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(-hw, -hh * 0.4);
+        canvasCtx.lineTo(-bridgeWidth/2, -hh * 0.4);
+        canvasCtx.moveTo(bridgeWidth/2, -hh * 0.4);
+        canvasCtx.lineTo(hw, -hh * 0.4);
+        canvasCtx.stroke();
+      }
+
+      // Draw Nose Bridge Connection
+      canvasCtx.lineWidth = Math.max(3, width * 0.03);
+      canvasCtx.beginPath();
+      canvasCtx.arc(0, -hh * 0.1, bridgeWidth / 2, Math.PI, 0, false);
+      canvasCtx.stroke();
+    }
+
+    /* Helper for drawing dual lenses + rims */
+    function drawRimsAndLenses(drawPathFn, hw, bridgeWidth, lensWidth, glassGradient) {
+      const leftCenterX = -(bridgeWidth/2 + lensWidth/2);
+      const rightCenterX = (bridgeWidth/2 + lensWidth/2);
+
+      [ {x: leftCenterX, isRight: false}, {x: rightCenterX, isRight: true} ].forEach(lens => {
+        // 1. Lens Fill (Glass Effect)
+        drawPathFn(lens.x, lens.isRight);
+        canvasCtx.fillStyle = glassGradient;
+        canvasCtx.fill();
+
+        // 2. Outer Frame Rim
+        canvasCtx.stroke();
+      });
+    }
+
+    /* Optional Mesh Visualizer */
+    function drawLandmarksMesh(landmarks) {
+      canvasCtx.fillStyle = '#38bdf8';
+      for (let i = 0; i < landmarks.length; i += 8) {
+        const pt = getPoint(landmarks[i], canvasElement.width, canvasElement.height);
+        canvasCtx.beginPath();
+        canvasCtx.arc(pt.x, pt.y, 1.5, 0, Math.PI * 2);
+        canvasCtx.fill();
+      }
+    }
+
+    /* ==========================================================================
+       7. UI INTERACTION & GALLERY MANAGERS
+       ========================================================================== */
+    function renderGlassesGallery() {
+      const grid = document.getElementById('glasses-grid');
+      grid.innerHTML = '';
+
+      let recommendedCount = 0;
+
+      GLASSES_CATALOG.forEach(item => {
+        const isRecommended = item.shapeMatch.includes(currentDetectedShape);
+        if (isRecommended) recommendedCount++;
+
+        const isSelected = item.id === selectedGlassesId;
+
+        const card = document.createElement('div');
+        card.className = `p-3 rounded-xl border text-left cursor-pointer transition flex flex-col justify-between relative ${
+          isSelected 
+            ? 'bg-brand-500/10 border-brand-500 shadow-lg shadow-brand-500/10' 
+            : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+        }`;
+
+        card.onclick = () => selectGlasses(item.id);
+
+        card.innerHTML = `
+          ${isRecommended ? `<span class="absolute top-2 right-2 text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold"><i class="fa-solid fa-star text-[8px]"></i> Sesuai</span>` : ''}
+          <div class="h-10 flex items-center justify-center my-1">
+            <i class="fa-solid fa-glasses text-2xl ${isSelected ? 'text-brand-400' : 'text-slate-500'}"></i>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-slate-200 truncate">${item.name}</h4>
+            <span class="text-[10px] text-slate-400 block">${item.type}</span>
+          </div>
+        `;
+
+        grid.appendChild(card);
+      });
+
+      document.getElementById('recommended-count').innerText = recommendedCount;
+    }
+
+    function selectGlasses(id) {
+      selectedGlassesId = id;
+      renderGlassesGallery();
+      triggerFrameRedraw();
+    }
+
+    function setFrameColor(hex) {
+      frameColor = hex;
+      triggerFrameRedraw();
+    }
+
+    function updateGlassesParam() {
+      scaleModifier = parseFloat(document.getElementById('slider-scale').value);
+      offsetYModifier = parseFloat(document.getElementById('slider-offset-y').value);
+
+      document.getElementById('val-scale').innerText = `${scaleModifier.toFixed(2)}x`;
+      document.getElementById('val-offset-y').innerText = `${offsetYModifier}px`;
+
+      triggerFrameRedraw();
+    }
+
+    function resetGlassesAdjustments() {
+      document.getElementById('slider-scale').value = 1.0;
+      document.getElementById('slider-offset-y').value = 0;
+      updateGlassesParam();
+    }
+
+    function toggleLandmarks() {
+      isLandmarksVisible = !isLandmarksVisible;
+      const btn = document.getElementById('btn-toggle-landmarks');
+      btn.className = `w-8 h-8 rounded-lg border flex items-center justify-center transition ${
+        isLandmarksVisible 
+          ? 'bg-brand-500 border-brand-400 text-white shadow-md shadow-brand-500/20' 
+          : 'bg-slate-900/80 border-slate-700 text-slate-300 hover:bg-slate-800'
+      }`;
+      triggerFrameRedraw();
+    }
+
+    function triggerFrameRedraw() {
+      if (lastResults) {
+        onFaceMeshResults(lastResults);
+      }
+    }
+
+    /* Switch between Live Webcam and Upload Image Mode */
+    function switchMode(mode) {
+      currentMode = mode;
+      const btnWebcam = document.getElementById('btn-mode-webcam');
+      const btnUpload = document.getElementById('btn-mode-upload');
+      const uploadOverlay = document.getElementById('upload-overlay');
+      const activeLabel = document.getElementById('active-mode-label');
+
+      if (mode === 'webcam') {
+        btnWebcam.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-500 text-white shadow-lg shadow-brand-500/30 flex items-center gap-2 transition hover:bg-brand-400";
+        btnUpload.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 backdrop-blur flex items-center gap-2 transition";
+        uploadOverlay.classList.add('hidden');
+        activeLabel.innerHTML = `<i class="fa-solid fa-circle text-[8px] text-emerald-400"></i> Live Webcam Mode`;
+        videoElement.play();
+      } else {
+        btnUpload.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-brand-500 text-white shadow-lg shadow-brand-500/30 flex items-center gap-2 transition hover:bg-brand-400";
+        btnWebcam.className = "px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800/80 hover:bg-slate-700 text-slate-300 border border-slate-700 backdrop-blur flex items-center gap-2 transition";
+        uploadOverlay.classList.remove('hidden');
+        activeLabel.innerHTML = `<i class="fa-solid fa-circle text-[8px] text-sky-400"></i> Upload Image Mode`;
+        videoElement.pause();
+      }
+    }
+
+    /* Handle Image Upload */
+    function handleImageUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        const img = new Image();
+        img.onload = async function() {
+          uploadedImageElement = img;
+          document.getElementById('upload-overlay').classList.add('hidden');
+          hideLoader();
+
+          // Process Face Mesh on Uploaded Image
+          await faceMesh.send({ image: img });
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    /* Snapshot Capturer */
+    function takeSnapshot() {
+      const dataUrl = canvasElement.toDataURL('image/png');
+      document.getElementById('snapshot-img').src = dataUrl;
+      document.getElementById('download-snap-btn').href = dataUrl;
+      document.getElementById('snapshot-modal').classList.remove('hidden');
+      document.getElementById('snapshot-modal').classList.add('flex');
+    }
+
+    function closeSnapshotModal() {
+      document.getElementById('snapshot-modal').classList.add('hidden');
+      document.getElementById('snapshot-modal').classList.remove('flex');
+    }
+  </script>
 </body>
 </html>
